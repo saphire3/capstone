@@ -1,7 +1,17 @@
+// Show any JS errors on the page (so you won't get a blank screen)
+window.onerror = (msg, src, line, col, err) => {
+  document.body.innerHTML =
+    `<pre style="color:white;padding:20px;white-space:pre-wrap;">
+JS ERROR:
+${msg}
+${src}:${line}:${col}
+${err?.stack || ""}
+</pre>`;
+};
+
 console.log("APP JSX LOADED");
 
 const { useEffect, useMemo, useState } = React;
-
 
 function useHashRoute(defaultRoute = "/login") {
   const [hash, setHash] = useState(() => window.location.hash || `#${defaultRoute}`);
@@ -12,7 +22,7 @@ function useHashRoute(defaultRoute = "/login") {
     return () => window.removeEventListener("hashchange", onHashChange);
   }, [defaultRoute]);
 
-  const route = useMemo(() => hash.replace("#", ""), [hash]);
+  const route = useMemo(() => (hash || "").replace("#", ""), [hash]);
   return { route, go: (r) => (window.location.hash = `#${r}`) };
 }
 
@@ -28,25 +38,35 @@ function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+// SAFE API helper (won't crash if backend returns HTML)
 async function api(path, { method = "GET", body } = {}) {
   const headers = { "Content-Type": "application/json" };
+
   const token = getToken();
-  if (token) headers["Authorization"] = Bearer ${token};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
 
   const res = await fetch(path, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
+    method: method,
+    headers: headers,
+    body: body ? JSON.stringify(body) : undefined
   });
 
-  // try parse json
+  const text = await res.text();
   let data = null;
-  try { data = await res.json(); } catch {}
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = null;
+  }
 
   if (!res.ok) {
-    const msg = (data && (data.message  data.error))  Request failed (${res.status});
+    const msg =
+      (data && (data.message || data.error)) ||
+      (text && text.slice(0, 200)) ||
+      `Request failed (${res.status})`;
     throw new Error(msg);
   }
+
   return data;
 }
 
@@ -69,11 +89,13 @@ function LoginPage({ go }) {
     e.preventDefault();
     setErr(null);
     setLoading(true);
+
     try {
       const data = await api("/api/auth/login", {
         method: "POST",
-        body: { login, password },
+        body: { login, password }
       });
+
       saveToken(data.token);
       go("/account");
     } catch (e) {
@@ -99,6 +121,7 @@ function LoginPage({ go }) {
             onChange={(e) => setLogin(e.target.value)}
             autoComplete="username"
           />
+
           <Field
             label="Password"
             placeholder="••••••••"
@@ -117,13 +140,16 @@ function LoginPage({ go }) {
 
         <div className="row">
           <div className="small">Don’t have an account?</div>
-          <a className="link" href="#/signup" onClick={(e) => { e.preventDefault(); go("/signup"); }}>
+          <a
+            className="link"
+            href="#/signup"
+            onClick={(e) => {
+              e.preventDefault();
+              go("/signup");
+            }}
+          >
             Sign up
           </a>
-        </div>
-
-        <div className="small" style={{ marginTop: 10 }}>
-          Test admin (seeded): <b>admin</b> / <b>admin123</b>
         </div>
       </div>
     </div>
@@ -134,18 +160,20 @@ function SignupPage({ go }) {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-
   const [err, setErr] = useState(null);
   const [loading, setLoading] = useState(false);
+
   async function onSubmit(e) {
     e.preventDefault();
     setErr(null);
     setLoading(true);
+
     try {
       const data = await api("/api/auth/signup", {
         method: "POST",
-        body: { username, email, password },
+        body: { username, email, password }
       });
+
       saveToken(data.token);
       go("/account");
     } catch (e) {
@@ -171,6 +199,7 @@ function SignupPage({ go }) {
             onChange={(e) => setUsername(e.target.value)}
             autoComplete="username"
           />
+
           <Field
             label="Email"
             placeholder="you@example.com"
@@ -179,6 +208,7 @@ function SignupPage({ go }) {
             onChange={(e) => setEmail(e.target.value)}
             autoComplete="email"
           />
+
           <Field
             label="Password"
             placeholder="Create a password"
@@ -196,7 +226,14 @@ function SignupPage({ go }) {
         <div className="hr"></div>
 
         <div className="row">
-          <a className="link" href="#/login" onClick={(e) => { e.preventDefault(); go("/login"); }}>
+          <a
+            className="link"
+            href="#/login"
+            onClick={(e) => {
+              e.preventDefault();
+              go("/login");
+            }}
+          >
             ← Back to login
           </a>
         </div>
@@ -267,3 +304,4 @@ function App() {
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+
