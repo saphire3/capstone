@@ -3,73 +3,96 @@ package com.capstone.service;
 import com.capstone.dto.auth.AuthResponse;
 import com.capstone.dto.auth.LoginRequest;
 import com.capstone.dto.auth.SignupRequest;
+import com.capstone.model.Role;
 import com.capstone.model.User;
 import com.capstone.repository.UserRepository;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@RequiredArgsConstructor
+@Transactional
 public class AuthService {
 
     private final UserRepository userRepository;
-    private final TokenService tokenService;
-    private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
+    private final PasswordEncoder passwordEncoder;
+    private final JwtService jwtService;
+    private final AuthenticationManager authenticationManager;
 
-    public AuthService(UserRepository userRepository, TokenService tokenService) {
-        this.userRepository = userRepository;
-        this.tokenService = tokenService;
+    public AuthResponse signup(SignupRequest request) {
+        String username = normalizeUsername(request.getUsername());
+        String email = normalizeEmail(request.getEmail());
+
+        validateSignup(username, email);
+
+        User user = User.builder()
+                .username(username)
+                .email(email)
+                .password(passwordEncoder.encode(request.getPassword()))
+                .role(Role.USER)
+                .enabled(true)
+                .accountNonExpired(true)
+                .accountNonLocked(true)
+                .credentialsNonExpired(true)
+                .build();
+
+        User savedUser = userRepository.save(user);
+        String token = jwtService.generateToken(savedUser);
+
+        return buildAuthResponse(savedUser, token);
     }
 
-    public AuthResponse signup(SignupRequest req) {
-        if (req.getUsername() == null || req.getUsername().isBlank()) {
-            throw new IllegalArgumentException("Username is required");
-        }
-        if (req.getEmail() == null || req.getEmail().isBlank()) {
-            throw new IllegalArgumentException("Email is required");
-        }
-        if (req.getPassword() == null || req.getPassword().isBlank()) {
-            throw new IllegalArgumentException("Password is required");
-        }
+    @Transactional(readOnly = true)
+    public AuthResponse login(LoginRequest request) {
+        Authentication authentication = authenticationManager.authenticate(
+                new UsernamePasswordAuthenticationToken(
+                        request.getUsernameOrEmail().trim(),
+                        request.getPassword()
+                )
+        );
 
-        if (userRepository.existsByUsernameIgnoreCase(req.getUsername())) {
+        User user = (User) authentication.getPrincipal();
+        String token = jwtService.generateToken(user);
+
+        return buildAuthResponse(user, token);
+    }
+
+    private void validateSignup(String username, String email) {
+        if (userRepository.existsByUsernameIgnoreCase(username)) {
             throw new IllegalArgumentException("Username already exists");
         }
-        if (userRepository.existsByEmailIgnoreCase(req.getEmail())) {
+
+        if (userRepository.existsByEmailIgnoreCase(email)) {
             throw new IllegalArgumentException("Email already exists");
         }
-
-        User u = new User();
-        u.setUsername(req.getUsername().trim());
-        u.setEmail(req.getEmail().trim());
-        u.setPasswordHash(encoder.encode(req.getPassword()));
-        u.setRole("USER"); // admins can't sign up
-        u.setActive(true);
-
-        User saved = userRepository.save(u);
-        String token = tokenService.issueToken(saved.getUserId());
-        return new AuthResponse(token, saved.getUserId(), saved.getUsername(), saved.getEmail(), saved.getRole());
     }
 
-    public AuthResponse login(LoginRequest req) {
-        if (req.getLogin() == null || req.getLogin().isBlank()) {
-            throw new IllegalArgumentException("Login is required");
+    private String normalizeUsername(String username) {
+        if (username == null || username.trim().isEmpty()) {
+            throw new IllegalArgumentException("Username is required");
         }
-        if (req.getPassword() == null || req.getPassword().isBlank()) {
-            throw new IllegalArgumentException("Password is required");
-        }
+        return username.trim();
+    }
 
-        User u = userRepository
-                .findByUsernameIgnoreCaseOrEmailIgnoreCase(req.getLogin().trim(), req.getLogin().trim())
-                .orElseThrow(() -> new IllegalArgumentException("Invalid credentials"));
-
-        if (!Boolean.TRUE.equals(u.getActive())) {
-            throw new IllegalArgumentException("Account is inactive");
+    private String normalizeEmail(String email) {
+        if (email == null || email.trim().isEmpty()) {
+            throw new IllegalArgumentException("Email is required");
         }
-        if (!encoder.matches(req.getPassword(), u.getPasswordHash())) {
-            throw new IllegalArgumentException("Invalid credentials");
-        }
+        return email.trim().toLowerCase();
+    }
 
-        String token = tokenService.issueToken(u.getUserId());
-        return new AuthResponse(token, u.getUserId(), u.getUsername(), u.getEmail(), u.getRole());
+    private AuthResponse buildAuthResponse(User user, String token) {
+        return AuthResponse.builder()
+                .token(token)
+                .id(user.getId())
+                .username(user.getUsername())
+                .email(user.getEmail())
+                .role(user.getRole())
+                .build();
     }
 }

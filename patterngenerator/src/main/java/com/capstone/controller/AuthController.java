@@ -4,24 +4,26 @@ import com.capstone.dto.auth.AuthResponse;
 import com.capstone.dto.auth.LoginRequest;
 import com.capstone.dto.auth.SignupRequest;
 import com.capstone.service.AuthService;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/auth")
+@RequiredArgsConstructor
 public class AuthController {
+
     private final AuthService authService;
 
-    public AuthController(AuthService authService) {
-        this.authService = authService;
-    }
-
     @PostMapping("/signup")
-    public AuthResponse signup(@RequestBody SignupRequest req) {
-        return authService.signup(req);
+    @ResponseStatus(HttpStatus.CREATED)
+    public AuthResponse signup(@Valid @RequestBody SignupRequest request) {
+        return authService.signup(request);
     }
 
     @PostMapping("/login")
-    public AuthResponse login(@RequestBody LoginRequest req) {
-        return authService.login(req);
+    public AuthResponse login(@Valid @RequestBody LoginRequest request) {
+        return authService.login(request);
     }
 }

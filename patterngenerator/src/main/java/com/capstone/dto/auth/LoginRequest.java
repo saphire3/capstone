@@ -1,12 +1,18 @@
 package com.capstone.dto.auth;
 
+import jakarta.validation.constraints.NotBlank;
+import lombok.*;
+
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class LoginRequest {
-    private String login;
+
+    @NotBlank
+    private String usernameOrEmail;
+
+    @NotBlank
     private String password;
-
-    public String getLogin() { return login; }
-    public void setLogin(String login) { this.login = login; }
-
-    public String getPassword() { return password; }
-    public void setPassword(String password) { this.password = password; }
 }
